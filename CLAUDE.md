@@ -41,7 +41,19 @@ backend/
   requirements.txt    ✓ done
 docker-compose.yml    ✓ done
 .env / .env.example   ✓ done
+frontend/
+  src/
+    App.tsx                        ✓ done — BrowserRouter, layout route, 4 page routes
+    components/Layout/Layout.tsx   ✓ done — nav bar + Outlet
+    pages/                         ✓ done — Home, Generate, Results, Recommendations (stubs)
+    index.css                      ✓ done — Tailwind directives only
+  tailwind.config.js               ✓ done
+  package.json                     ✓ done — react-router-dom, tailwindcss@3
 ```
+
+## Node version
+nvm installed, Node 22.23.0 active. nvm loads automatically in new terminals via ~/.bashrc.
+In existing terminals: `export NVM_DIR="$HOME/.nvm" && source "$NVM_DIR/nvm.sh"`
 
 ## Phase checklist
 ### Phase 0 — Setup ✓
@@ -50,9 +62,9 @@ docker-compose.yml    ✓ done
 - [x] Supabase project created, pgvector enabled
 - [x] docker-compose.yml (postgres + redis)
 - [x] FastAPI scaffold (config, database, main, health check)
-- [ ] React scaffold (Vite + Tailwind) ← **next**
+- [x] React scaffold (Vite + Tailwind + React Router, Node 22 via nvm)
 
-### Phase 1 — Data Foundation (Days 2–5)
+### Phase 1 — Data Foundation (Days 2–5) ← **next**
 - [ ] SQLAlchemy models: Track, User, Playlist, FeedbackEvent, IntentSession
 - [ ] Alembic setup + initial migration
 - [ ] spotify_client.py service
