@@ -1,6 +1,6 @@
 # Playlist Recommender
 
-A hybrid music recommendation system that generates playlists and recommends songs based on user preferences, listening history, and natural language prompts.
+A music recommendation system that generates playlists and recommends songs based on user preferences, listening history, and natural language prompts.
 
 ## Local Development
 
