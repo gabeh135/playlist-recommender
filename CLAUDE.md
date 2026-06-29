@@ -165,6 +165,8 @@ LLM naming is a minimal afterthought: after clustering, pass the top 5 track tit
 - Feedback loop (FeedbackEvent → preference signal)
 - LightGBM ranker — fixes lexical overlap issues in cosine similarity (e.g. a country song matching a "rap" prompt due to title word overlap)
 - Soft cluster assignment — tracks near two centroids can appear in both playlists
+- **Natural language clustering input**: user describes how they want their library split — potential vibes per playlist, themes, moods, etc. This is the intended long-term direction for Sort Library; the current slider-based UI is a proof of concept. The NL input would feed into both the clustering math (guided/constrained clustering) and LLM playlist naming.
+- LLM playlist naming (Claude Haiku — minimal, uses top 5 track titles per cluster)
 - Rate limiting, pagination, tests, README, demo video
 
 ## Data model

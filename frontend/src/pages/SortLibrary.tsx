@@ -92,12 +92,23 @@ export default function SortLibrary() {
         <div className="space-y-1">
           <h2 className="text-lg font-semibold">Sort library</h2>
           <p className="text-sm text-muted-foreground">
-            Proof of concept — groups your collection into playlists by embedding similarity.
-            Results will vary significantly based on collection size and diversity.
+            Proof of concept. Results will vary significantly based on collection size and diversity.
           </p>
         </div>
 
         <div className="space-y-5">
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-muted-foreground">
+              Describe how you want your library sorted{" "}
+              <span className="text-xs">(coming soon)</span>
+            </p>
+            <textarea
+              disabled
+              placeholder='e.g. "split by era and energy — one playlist for late night stuff, one for workouts, one for background music..."'
+              className="w-full h-16 px-3 py-2 text-sm rounded-md border border-border bg-muted/40 text-muted-foreground resize-none cursor-not-allowed"
+            />
+          </div>
+
           <div className="space-y-2">
             <p className="text-sm font-medium">Number of playlists</p>
             <div className="flex items-center gap-3">

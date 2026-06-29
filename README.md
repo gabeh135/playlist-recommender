@@ -18,9 +18,9 @@ cp .env.example backend/.env
 ```
 
 Fill in the required values in `backend/.env`:
-- `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` — from [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
-- `DATABASE_URL` — your Supabase connection string
-- `SECRET_KEY` — any random 32-char hex string (`python3 -c "import secrets; print(secrets.token_hex(32))"`)
+- `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` from [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
+- `DATABASE_URL` your Supabase connection string
+- `SECRET_KEY` any random 32-char hex string (`python3 -c "import secrets; print(secrets.token_hex(32))"`)
 
 ### 2. Start infrastructure
 
