@@ -1,8 +1,8 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -42,6 +42,11 @@ class CollectionTrackResponse(BaseModel):
     album_art_url: str | None
     added_at: str
     source: str
+
+
+class CollectionPageResponse(BaseModel):
+    items: list[CollectionTrackResponse]
+    total: int
 
 
 @router.post("/tracks", status_code=201)
@@ -217,30 +222,44 @@ async def import_playlist(
     return {"imported": added, "skipped": len(raw_tracks) - added}
 
 
-@router.get("/tracks", response_model=list[CollectionTrackResponse])
+@router.get("/tracks", response_model=CollectionPageResponse)
 async def get_collection(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
 ):
+    total_result = await db.execute(
+        select(func.count())
+        .select_from(CollectionTrack)
+        .where(CollectionTrack.user_id == user.id)
+    )
+    total = total_result.scalar_one()
+
     result = await db.execute(
         select(Track, CollectionTrack)
         .join(CollectionTrack, CollectionTrack.track_id == Track.id)
         .where(CollectionTrack.user_id == user.id)
         .order_by(CollectionTrack.added_at.desc())
+        .limit(limit)
+        .offset(offset)
     )
     rows = result.all()
 
-    return [
-        CollectionTrackResponse(
-            track_id=track.id,
-            spotify_id=track.spotify_id,
-            title=track.title,
-            artist=track.artist,
-            album=track.album,
-            release_year=track.release_year,
-            album_art_url=track.album_art_url,
-            added_at=str(ct.added_at),
-            source=ct.source,
-        )
-        for track, ct in rows
-    ]
+    return CollectionPageResponse(
+        total=total,
+        items=[
+            CollectionTrackResponse(
+                track_id=track.id,
+                spotify_id=track.spotify_id,
+                title=track.title,
+                artist=track.artist,
+                album=track.album,
+                release_year=track.release_year,
+                album_art_url=track.album_art_url,
+                added_at=str(ct.added_at),
+                source=ct.source,
+            )
+            for track, ct in rows
+        ],
+    )
