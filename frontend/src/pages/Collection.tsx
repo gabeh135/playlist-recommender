@@ -47,6 +47,7 @@ export default function Collection() {
   const [searching, setSearching] = useState(false)
   const [adding, setAdding] = useState<string | null>(null)
   const [importing, setImporting] = useState(false)
+  const [loadingDemo, setLoadingDemo] = useState(false)
 
   const hasMore = tracks.length < total
 
@@ -93,6 +94,19 @@ export default function Collection() {
       fetchPage(tracks.length)
     }
   }, [lastVirtualItem?.index, loadingMore, tracks.length, fetchPage])
+
+  async function handleLoadDemo() {
+    if (!userId) return
+    setLoadingDemo(true)
+    try {
+      await apiFetch("/collection/demo", userId, { method: "POST" })
+      await fetchPage(0, true)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setLoadingDemo(false)
+    }
+  }
 
   async function handleSearch(e: React.SyntheticEvent) {
     e.preventDefault()
@@ -215,14 +229,35 @@ export default function Collection() {
       </div>
 
       <div className="space-y-4">
-        <h2 className="text-lg font-semibold">
-          Your tracks{total > 0 ? ` (${total})` : ""}
-        </h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold">
+            Your tracks{total > 0 ? ` (${total})` : ""}
+          </h2>
+          {total > 0 && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleLoadDemo}
+              disabled={loadingDemo || !userId}
+            >
+              {loadingDemo ? "Loading..." : "Load sample collection"}
+            </Button>
+          )}
+        </div>
 
         {total === 0 && !loadingMore ? (
-          <p className="text-muted-foreground text-sm">
-            No tracks yet. Search or import a playlist to get started.
-          </p>
+          <div className="space-y-3">
+            <p className="text-muted-foreground text-sm">
+              No tracks yet. Search above to add tracks, or load a sample collection to get started.
+            </p>
+            <Button
+              variant="outline"
+              onClick={handleLoadDemo}
+              disabled={loadingDemo || !userId}
+            >
+              {loadingDemo ? "Loading sample collection..." : "Load sample collection"}
+            </Button>
+          </div>
         ) : (
           <div
             ref={parentRef}

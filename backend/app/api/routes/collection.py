@@ -2,9 +2,10 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import func, insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.ml.encoders.embed import embed_text
@@ -263,3 +264,48 @@ async def get_collection(
             for track, ct in rows
         ],
     )
+
+
+@router.post("/demo", status_code=201)
+async def load_demo_collection(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if not settings.demo_user_id:
+        raise HTTPException(status_code=503, detail="Demo collection not available")
+
+    demo_result = await db.execute(
+        select(CollectionTrack.track_id).where(
+            CollectionTrack.user_id == settings.demo_user_id
+        )
+    )
+    demo_track_ids = [row[0] for row in demo_result.all()]
+
+    if not demo_track_ids:
+        raise HTTPException(status_code=503, detail="Demo collection is empty")
+
+    # skip existng results
+    existing_result = await db.execute(
+        select(CollectionTrack.track_id).where(
+            CollectionTrack.user_id == user.id,
+            CollectionTrack.track_id.in_(demo_track_ids),
+        )
+    )
+    already_owned = {row[0] for row in existing_result.all()}
+
+    new_track_ids = [tid for tid in demo_track_ids if tid not in already_owned]
+
+    if new_track_ids:
+        await db.execute(
+            insert(CollectionTrack).values([
+                {
+                    "user_id": user.id,
+                    "track_id": tid,
+                    "source": CollectionSource.DEMO_SEED,
+                }
+                for tid in new_track_ids
+            ])
+        )
+        await db.commit()
+
+    return {"added": len(new_track_ids), "skipped": len(already_owned)}

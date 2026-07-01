@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     spotify_redirect_uri: str
 
     anthropic_api_key: str = ""
+    demo_user_id: str = ""
 
     lastfm_api_key: str = ""
     lastfm_api_secret: str = ""

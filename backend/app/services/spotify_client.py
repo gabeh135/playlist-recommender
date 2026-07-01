@@ -6,12 +6,19 @@ from app.core.config import settings
 
 class SpotifyClient:
     def __init__(self):
-        self._sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(client_id=settings.spotify_client_id, client_secret=settings.spotify_client_secret))
+        self._sp = spotipy.Spotify(
+            auth_manager=SpotifyClientCredentials(
+                client_id=settings.spotify_client_id,
+                client_secret=settings.spotify_client_secret,
+                requests_timeout=10,
+            ),
+            requests_timeout=10,
+        )
 
     def search_tracks(self, query: str, limit: int) -> list[dict]:
         results = []
         offset = 0
-        
+
         while len(results) < limit:
             batch_size = min(10, limit - len(results))  # Spotify caps search results at 10 per request (Feb 2026)
             response = self._sp.search(q=query, type="track", limit=batch_size, offset=offset)
@@ -22,7 +29,7 @@ class SpotifyClient:
 
             results.extend(items)
             offset += len(items)
-        
+
         return results
 
     def get_artist_genres(self, artist_ids: list[str]) -> dict[str, list[str]]:
@@ -53,5 +60,5 @@ class SpotifyClient:
             items = [item["item"] for item in response["items"] if item.get("item") is not None]
             tracks.extend(items)
             response = self._sp.next(response) if response["next"] else None
-    
+
         return tracks

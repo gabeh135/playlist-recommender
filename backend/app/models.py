@@ -19,6 +19,7 @@ class CollectionSource(str, enum.Enum):
     SEARCH = "SEARCH"
     PLAYLIST_IMPORT = "PLAYLIST_IMPORT"
     LIKED_SONGS = "LIKED_SONGS"
+    DEMO_SEED = "DEMO_SEED"
 
 
 class FeedbackType(str, enum.Enum):
