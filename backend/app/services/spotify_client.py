@@ -1,4 +1,6 @@
+import requests
 import spotipy
+import urllib3
 from spotipy.oauth2 import SpotifyClientCredentials
 
 from app.core.config import settings
@@ -14,6 +16,16 @@ class SpotifyClient:
             ),
             requests_timeout=10,
         )
+
+        retry = urllib3.Retry(
+            total=3,
+            status_forcelist=(429, 500, 502, 503, 504),
+            backoff_factor=0.5,
+            respect_retry_after_header=False,
+        )
+        adapter = requests.adapters.HTTPAdapter(max_retries=retry)
+        self._sp._session.mount("https://", adapter)
+        self._sp._session.mount("http://", adapter)
 
     def search_tracks(self, query: str, limit: int) -> list[dict]:
         results = []
