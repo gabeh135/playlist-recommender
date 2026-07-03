@@ -248,7 +248,7 @@ export default function Collection() {
         {total === 0 && !loadingMore ? (
           <div className="space-y-3">
             <p className="text-muted-foreground text-sm">
-              No tracks yet. Search above to add tracks, or load a sample collection to get started.
+              No tracks yet, search above to get started.
             </p>
             <Button
               variant="outline"
