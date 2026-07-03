@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -8,6 +10,7 @@ from app.core.deps import get_current_user
 from app.ml.encoders.embed import embed_text
 from app.ml.retrieval import search_collection
 from app.models import GenerationMode, IntentSession, Playlist, PlaylistTrack, Track, User
+from app.services.claude_client import expand_query
 
 router = APIRouter(prefix="/playlists", tags=["playlists"])
 
@@ -39,7 +42,8 @@ async def generate_playlist(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    query_embedding = embed_text(body.prompt)
+    expanded_prompt = await asyncio.to_thread(expand_query, body.prompt)
+    query_embedding = embed_text(expanded_prompt)
 
     intent_session = IntentSession(
         user_id=user.id,

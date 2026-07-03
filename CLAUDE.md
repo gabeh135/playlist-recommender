@@ -38,6 +38,7 @@ Spotify refresh tokens expire after **6 months** (policy introduced June 2026). 
 - Search limit is capped at 10 results per request
 - Playlist item field is `item["item"]`, not `item["track"]`
 - `popularity` field no longer available on Track or Artist objects
+- Shared client-credentials token can get rate-limited for extended periods (hit a 16+ hour `Retry-After` once); `spotify_client.py` uses bounded retry/backoff instead of honoring it verbatim
 
 ## Infrastructure
 - **Docker Compose** runs local Postgres (pgvector/pgvector:pg16) + Redis for development
@@ -84,15 +85,16 @@ docker-compose.yml        ✓ done
 .env / .env.example       ✓ done
 frontend/
   src/
-    App.tsx                        ✓ done — BrowserRouter, layout route, 3 page routes (Collection, Generate, Sort Library)
+    App.tsx                        ✓ done — BrowserRouter, layout route, 3 page routes (Collection, Generate, Sort Library); gated on useUser() with LoadingScreen until resolved
+    components/LoadingScreen.tsx   ✓ done — full-screen spinner shown until useUser() resolves (cold-start gate)
     components/Layout/Layout.tsx   ✓ done — top nav (Collection / Generate / Sort Library)
-    components/ui/                 ✓ done — shadcn/radix-nova: button, input, slider
+    components/ui/                 ✓ done — shadcn/radix-nova: button, input, slider, spinner
     hooks/useUser.ts               ✓ done — anonymous UUID from localStorage, POST /users on first visit
     lib/api.ts                     ✓ done — apiFetch() with X-User-ID header
     lib/utils.ts                   ✓ done — shadcn cn() utility
     pages/Collection.tsx           ✓ done — search, import playlist, track list with album art
     pages/Generate.tsx             ✓ done — prompt input, track count slider, ranked results with album art
-    pages/SortLibrary.tsx          ← in progress
+    pages/SortLibrary.tsx          ✓ done — playlist count (auto/manual), completeness slider, loading state, results as playlist cards
     index.css                      ✓ done — Tailwind v4 + shadcn CSS vars (slate/indigo dark theme)
   components.json                  ✓ done — shadcn config (radix-nova preset)
   vite.config.ts                   ✓ done — @tailwindcss/vite plugin, @/ alias
@@ -136,16 +138,21 @@ In existing terminals: `export NVM_DIR="$HOME/.nvm" && source "$NVM_DIR/nvm.sh"`
 - [x] clustering.py (K-Means via sklearn, silhouette score for k estimation, outlier detection)
 - [x] POST /cluster — run clustering, write ClusteringRun + Playlists + PlaylistTracks
 
-### Phase 4 — Frontend MVP ← **in progress**
+### Phase 4 — Frontend MVP ✓
 - [x] Collection view (search + import UI, track list with album art)
 - [x] Targeted generation UI (prompt input, track count slider, ranked results with album art)
-- [ ] Sort Library UI (see design decisions below)
-- [ ] Deploy backend to Fly.io, frontend to Vercel
+- [x] Sort Library UI (see design decisions below)
+- [x] Deploy backend to Fly.io, frontend to Vercel
 
 #### Sort Library UI — design decisions
 Two inputs before triggering:
 - **Number of playlists**: "Auto" (default, silhouette-score k-selection) or manual override. Manual range is 2 to `floor(collection_size / 8)` — enforces at least ~8 tracks per playlist. Show a warning if the chosen k would produce very small playlists. Update clustering code: current `max_k = min(10, n // 5)` is too conservative; change to `min(n // 8, user_supplied_max)` so large collections can produce more playlists.
 - **Completeness**: slider (Loose → Strict) — maps to `outlier_threshold`; loose = more tracks included even if weakly fitting; strict = only core cluster members. Default: somewhere in the middle.
+
+#### Known issues / loose ends (not blocking, revisit when convenient)
+- Small-playlist warning only shows at the slider's max value, not across the whole range where it'd still apply
+- `tracks.py` search-result parsing and `collection.py`'s `add_track` → `spotify.get_track` call aren't wrapped in try/except; an unhandled exception there 500s without CORS headers, which shows up in the browser as a misleading CORS error
+- `useUser.ts` has no retry on a failed `/users` call — if it fails once (e.g. mid cold-start), the loading screen hangs with no recovery
 
 After triggering:
 - Descriptive loading state ("Analyzing your collection...", "Building playlists...") — clustering is synchronous and can take several seconds for large collections.
