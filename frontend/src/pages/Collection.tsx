@@ -4,6 +4,7 @@ import { useUser } from "@/hooks/useUser"
 import { apiFetch } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Spinner } from "@/components/ui/spinner"
 
 interface TrackCandidate {
   spotify_id: string
@@ -42,7 +43,7 @@ export default function Collection() {
 
   const [tracks, setTracks] = useState<CollectionTrack[]>([])
   const [total, setTotal] = useState(0)
-  const [loadingMore, setLoadingMore] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(true)
 
   const [searching, setSearching] = useState(false)
   const [adding, setAdding] = useState<string | null>(null)
@@ -245,7 +246,11 @@ export default function Collection() {
           )}
         </div>
 
-        {total === 0 && !loadingMore ? (
+        {total === 0 && loadingMore ? (
+          <div className="flex items-center justify-center py-12">
+            <Spinner className="size-6 text-muted-foreground" />
+          </div>
+        ) : total === 0 ? (
           <div className="space-y-3">
             <p className="text-muted-foreground text-sm">
               No tracks yet, search above to get started.
