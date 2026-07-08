@@ -8,9 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.ml.encoders.embed import embed_text
-from app.ml.retrieval import search_collection
+from app.ml.retrieval import rerank_by_tags, search_collection
 from app.models import GenerationMode, IntentSession, Playlist, PlaylistTrack, Track, User
-from app.services.claude_client import expand_query
+from app.services.claude_client import analyze_prompt, select_best_tracks
 
 router = APIRouter(prefix="/playlists", tags=["playlists"])
 
@@ -42,8 +42,8 @@ async def generate_playlist(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    expanded_prompt = await asyncio.to_thread(expand_query, body.prompt)
-    query_embedding = embed_text(expanded_prompt)
+    intent = await asyncio.to_thread(analyze_prompt, body.prompt)
+    query_embedding = embed_text(intent.expanded_text)
 
     intent_session = IntentSession(
         user_id=user.id,
@@ -53,9 +53,12 @@ async def generate_playlist(
     db.add(intent_session)
     await db.flush()  # need intent_session.id before the Playlist row references it
 
-    results = await search_collection(user.id, query_embedding, body.limit, db)
-    if not results:
+    candidates = await search_collection(user.id, query_embedding, body.limit * 3, db)
+    if not candidates:
         raise HTTPException(status_code=422, detail="Collection is empty or no tracks have embeddings")
+
+    judged = await asyncio.to_thread(select_best_tracks, body.prompt, candidates, body.limit)
+    results = judged if judged is not None else rerank_by_tags(candidates, intent.keywords, body.limit)
 
     playlist = Playlist(
         user_id=user.id,
