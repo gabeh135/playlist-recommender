@@ -9,13 +9,29 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.deps import get_current_user
-from app.ml.clustering.clustering import cluster_collection, load_embeddings, MIN_TRACKS
+from app.ml.clustering.clustering import ClusterResult, cluster_collection, load_embeddings, MIN_TRACKS
 from app.models import ClusteringRun, GenerationMode, Playlist, PlaylistTrack, Track, User
 from app.services.claude_client import name_playlist
 
 NAMING_SAMPLE_SIZE = 5
 
 router = APIRouter(prefix="/cluster", tags=["cluster"])
+
+
+async def _name_clusters(
+    results: list[ClusterResult], track_map: dict[str, Track]
+) -> list[str | None]:
+    """Name each cluster from a sample of its centroid-closest tracks"""
+    samples = []
+    for result in results:
+        sample_titles = []
+        for track_id in result.track_ids[:NAMING_SAMPLE_SIZE]:
+            track = track_map.get(track_id)
+            if track:
+                sample_titles.append(f"{track.title} by {track.artist}")
+        samples.append(sample_titles)
+
+    return await asyncio.gather(*[asyncio.to_thread(name_playlist, sample) for sample in samples])
 
 
 class ClusterRequest(BaseModel):
@@ -80,19 +96,7 @@ async def create_cluster(
     result_rows = await db.execute(select(Track).where(Track.id.in_(track_ids)))
     track_map: dict[str, Track] = {t.id: t for t in result_rows.scalars().all()}
 
-    # name each cluster via a sample of its closest tracks
-    samples = []
-    for result in results:
-        sample_titles = []
-        for track_id in result.track_ids[:NAMING_SAMPLE_SIZE]:
-            track = track_map.get(track_id)
-            if track:
-                sample_titles.append(f"{track.title} by {track.artist}")
-        samples.append(sample_titles)
-
-    names = await asyncio.gather(
-        *[asyncio.to_thread(name_playlist, sample) for sample in samples]
-    )
+    names = await _name_clusters(results, track_map)
 
     playlists_out: list[ClusterPlaylistItem] = []
     tracks_placed = 0
