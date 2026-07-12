@@ -58,7 +58,9 @@ class ClusterResponse(BaseModel):
     n_clusters: int
     tracks_placed: int
     outliers_excluded: int
+    silhouette_score: float | None
     playlists: list[ClusterPlaylistItem]
+    outlier_tracks: list[ClusterTrackItem]
 
 
 @router.post("", response_model=ClusterResponse, status_code=201)
@@ -79,7 +81,7 @@ async def create_cluster(
     matrix = np.array(vectors)
 
     # run async as k-means can take time
-    results = await asyncio.to_thread(
+    results, silhouette, outlier_track_ids = await asyncio.to_thread(
         cluster_collection, track_ids, matrix, body.outlier_threshold, body.n_clusters
     )
 
@@ -88,6 +90,7 @@ async def create_cluster(
         n_clusters=len(results),
         algorithm="kmeans",
         outlier_threshold=body.outlier_threshold,
+        silhouette_score=silhouette,
         run_at=datetime.now(timezone.utc),
     )
     db.add(run)
@@ -95,6 +98,18 @@ async def create_cluster(
 
     result_rows = await db.execute(select(Track).where(Track.id.in_(track_ids)))
     track_map: dict[str, Track] = {t.id: t for t in result_rows.scalars().all()}
+
+    outlier_tracks = []
+    for position, track_id in enumerate(outlier_track_ids):
+        t = track_map.get(track_id)
+        if t:
+            outlier_tracks.append(ClusterTrackItem(
+                position=position,
+                track_id=track_id,
+                title=t.title,
+                artist=t.artist,
+                album_art_url=t.album_art_url,
+            ))
 
     names = await _name_clusters(results, track_map)
 
@@ -136,6 +151,8 @@ async def create_cluster(
         clustering_run_id=run.id,
         n_clusters=run.n_clusters,
         tracks_placed=tracks_placed,
-        outliers_excluded=len(track_ids) - tracks_placed,
+        outliers_excluded=len(outlier_tracks),
+        silhouette_score=run.silhouette_score,
         playlists=playlists_out,
+        outlier_tracks=outlier_tracks,
     )
