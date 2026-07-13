@@ -4,6 +4,7 @@ import numpy as np
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 from sklearn.metrics.pairwise import pairwise_distances
+from sklearn.preprocessing import normalize
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -67,6 +68,7 @@ def cluster_collection(
     if n < MIN_TRACKS:
         raise ValueError(f"Need at least {MIN_TRACKS} tracks to cluster (got {n})")
 
+    matrix = normalize(matrix)
     distance_matrix = pairwise_distances(matrix)
 
     if n_clusters is not None:
