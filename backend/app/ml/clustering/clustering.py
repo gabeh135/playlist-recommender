@@ -13,6 +13,7 @@ from app.models import CollectionTrack, Track
 
 MIN_TRACKS = 10
 MAX_AUTO_CLUSTERS = 25
+SILHOUETTE_TOLERANCE = 0.02
 
 @dataclass
 class ClusterResult:
@@ -31,19 +32,17 @@ async def load_embeddings(user_id: str, db: AsyncSession) -> list[tuple[str, lis
 
 
 def _find_optimal_k(matrix, distance_matrix, max_k: int) -> int:
-    best_k = None
-    best_score = -1
+    scores: dict[int, float] = {}
 
     for k in range(2, max_k + 1):
         kmeans = KMeans(n_clusters=k, random_state=42)
         kmeans.fit(matrix)
+        scores[k] = silhouette_score(distance_matrix, kmeans.labels_, metric="precomputed")
 
-        score = silhouette_score(distance_matrix, kmeans.labels_, metric="precomputed")
-        if score > best_score:
-            best_k = k
-            best_score = score
-
-    return best_k
+    best_score = max(scores.values())
+    # choose the largest k that's within tolerance to avoid bias towards smaller k
+    candidates = [k for k, score in scores.items() if score >= best_score - SILHOUETTE_TOLERANCE]
+    return max(candidates)
 
 
 def _outlier_indices(matrix, labels, centroids, threshold_multiplier: float) -> set[int]:
