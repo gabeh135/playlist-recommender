@@ -21,6 +21,7 @@ from app.services.lastfm_client import LastFmClient
 from app.services.spotify_client import SpotifyClient
 
 TARGET = 1000
+BATCH_SIZE = 50
 GENRE_TAGS = [
     "pop", "rock", "hip-hop", "r&b", "electronic", "country",
     "indie", "metal", "jazz", "k-pop", "latin", "folk",
@@ -64,6 +65,114 @@ def get_lastfm_top_tracks(api_key: str, target: int) -> list[dict]:
     return tracks[:target]
 
 
+async def process_batch(batch, start_index, total, demo_user_id, spotify, lastfm, db):
+    resolved: list[dict | None] = []
+    for offset, candidate in enumerate(batch):
+        i = start_index + offset + 1
+        title = candidate["title"]
+        artist = candidate["artist"]
+        print(f"[{i}/{total}] resolving {title} — {artist}")
+
+        try:
+            results = spotify.search_tracks(f"{artist} {title}", limit=1)
+        except Exception as e:
+            print(f"  Spotify search failed: {e} — skipping")
+            resolved.append(None)
+            continue
+
+        if not results:
+            print("  Not found on Spotify — skipping")
+            resolved.append(None)
+            continue
+
+        raw = results[0]
+        existing = await db.execute(select(Track).where(Track.spotify_id == raw["id"]))
+        resolved.append({"raw": raw, "track": existing.scalar_one_or_none()})
+
+    new_entries = [r for r in resolved if r is not None and r["track"] is None]
+    artist_ids = list({r["raw"]["artists"][0]["id"] for r in new_entries})
+    genre_map = spotify.get_artist_genres(artist_ids) if artist_ids else {}
+    print(f"  Fetched genres for {len(artist_ids)} unique artists")
+
+    added = 0
+    skipped = 0
+
+    for offset, entry in enumerate(resolved):
+        i = start_index + offset + 1
+        if entry is None:
+            skipped += 1
+            continue
+
+        raw = entry["raw"]
+        track = entry["track"]
+
+        if track is None:
+            artist_id = raw["artists"][0]["id"]
+            artist_name = raw["artists"][0]["name"]
+            track_title = raw["name"]
+            print(f"[{i}/{total}] {track_title} — {artist_name}")
+            album = raw.get("album", {}).get("name", "")
+
+            release_year = None
+            rd = raw.get("album", {}).get("release_date", "")
+            if rd:
+                try:
+                    release_year = int(rd[:4])
+                except ValueError:
+                    pass
+
+            images = raw.get("album", {}).get("images", [])
+            album_art_url = images[0]["url"] if images else None
+
+            genres = genre_map.get(artist_id, [])
+            tags = lastfm.get_track_tags(artist_name, track_title)
+
+            embedding_input = f"{track_title} by {artist_name}. Genres: {', '.join(genres)}. Tags: {', '.join(tags)}"
+            embedding = embed_text(embedding_input)
+            genre_tag_input = f"Genres: {', '.join(genres)}. Tags: {', '.join(tags)}"
+            genre_tag_embedding = embed_text(genre_tag_input)
+
+            track = Track(
+                spotify_id=raw["id"],
+                title=track_title,
+                artist=artist_name,
+                album=album,
+                release_year=release_year,
+                album_art_url=album_art_url,
+                genres=genres,
+                tags=tags,
+                embedding=embedding,
+                genre_tag_embedding=genre_tag_embedding,
+                enriched_at=datetime.now(timezone.utc),
+            )
+            db.add(track)
+            await db.flush()
+            print(f"  → Enriched and stored (spotify_id: {track.spotify_id})")
+        else:
+            print(f"[{i}/{total}] {track.title} — {track.artist}")
+            print("  → Already in tracks table")
+
+        ct_result = await db.execute(
+            select(CollectionTrack).where(
+                CollectionTrack.user_id == demo_user_id,
+                CollectionTrack.track_id == track.id,
+            )
+        )
+        if ct_result.scalar_one_or_none():
+            print("  → Already in demo collection")
+            skipped += 1
+        else:
+            db.add(CollectionTrack(
+                user_id=demo_user_id,
+                track_id=track.id,
+                source=CollectionSource.DEMO_SEED,
+            ))
+            added += 1
+
+    await db.commit()
+    return added, skipped
+
+
 async def main():
     db_url = settings.active_database_url
     if db_url.startswith("postgresql://"):
@@ -97,112 +206,17 @@ async def main():
         candidates = get_lastfm_top_tracks(settings.lastfm_api_key, TARGET)
         print(f"Got {len(candidates)} candidates\n")
 
-        resolved: list[dict | None] = []
-        for i, candidate in enumerate(candidates, 1):
-            title = candidate["title"]
-            artist = candidate["artist"]
-            print(f"[{i}/{len(candidates)}] resolving {title} — {artist}")
-
-            try:
-                results = spotify.search_tracks(f"{artist} {title}", limit=1)
-            except Exception as e:
-                print(f"  Spotify search failed: {e} — skipping")
-                resolved.append(None)
-                continue
-
-            if not results:
-                print("  Not found on Spotify — skipping")
-                resolved.append(None)
-                continue
-
-            raw = results[0]
-            existing = await db.execute(select(Track).where(Track.spotify_id == raw["id"]))
-            resolved.append({"raw": raw, "track": existing.scalar_one_or_none()})
-
-        new_entries = [r for r in resolved if r is not None and r["track"] is None]
-        artist_ids = list({r["raw"]["artists"][0]["id"] for r in new_entries})
-        genre_map = spotify.get_artist_genres(artist_ids) if artist_ids else {}
-        print(f"\nFetched genres for {len(artist_ids)} unique artists\n")
-
         added = 0
         skipped = 0
 
-        for i, entry in enumerate(resolved, 1):
-            if entry is None:
-                skipped += 1
-                continue
-
-            raw = entry["raw"]
-            track = entry["track"]
-
-            if track is None:
-                artist_id = raw["artists"][0]["id"]
-                artist_name = raw["artists"][0]["name"]
-                track_title = raw["name"]
-                print(f"[{i}/{len(resolved)}] {track_title} — {artist_name}")
-                album = raw.get("album", {}).get("name", "")
-
-                release_year = None
-                rd = raw.get("album", {}).get("release_date", "")
-                if rd:
-                    try:
-                        release_year = int(rd[:4])
-                    except ValueError:
-                        pass
-
-                images = raw.get("album", {}).get("images", [])
-                album_art_url = images[0]["url"] if images else None
-
-                genres = genre_map.get(artist_id, [])
-                tags = lastfm.get_track_tags(artist_name, track_title)
-
-                embedding_input = f"{track_title} by {artist_name}. Genres: {', '.join(genres)}. Tags: {', '.join(tags)}"
-                embedding = embed_text(embedding_input)
-                genre_tag_input = f"Genres: {', '.join(genres)}. Tags: {', '.join(tags)}"
-                genre_tag_embedding = embed_text(genre_tag_input)
-
-                track = Track(
-                    spotify_id=raw["id"],
-                    title=track_title,
-                    artist=artist_name,
-                    album=album,
-                    release_year=release_year,
-                    album_art_url=album_art_url,
-                    genres=genres,
-                    tags=tags,
-                    embedding=embedding,
-                    genre_tag_embedding=genre_tag_embedding,
-                    enriched_at=datetime.now(timezone.utc),
-                )
-                db.add(track)
-                await db.flush()
-                print(f"  → Enriched and stored (spotify_id: {track.spotify_id})")
-            else:
-                print(f"[{i}/{len(resolved)}] {track.title} — {track.artist}")
-                print("  → Already in tracks table")
-
-            ct_result = await db.execute(
-                select(CollectionTrack).where(
-                    CollectionTrack.user_id == demo_user_id,
-                    CollectionTrack.track_id == track.id,
-                )
+        for batch_start in range(0, len(candidates), BATCH_SIZE):
+            batch = candidates[batch_start:batch_start + BATCH_SIZE]
+            batch_added, batch_skipped = await process_batch(
+                batch, batch_start, len(candidates), demo_user_id, spotify, lastfm, db
             )
-            if ct_result.scalar_one_or_none():
-                print("  → Already in demo collection")
-                skipped += 1
-            else:
-                db.add(CollectionTrack(
-                    user_id=demo_user_id,
-                    track_id=track.id,
-                    source=CollectionSource.DEMO_SEED,
-                ))
-                added += 1
-
-            if i % 50 == 0:
-                await db.commit()
-                print(f"  [checkpoint] committed {i} tracks")
-
-        await db.commit()
+            added += batch_added
+            skipped += batch_skipped
+            print(f"  [checkpoint] committed through {batch_start + len(batch)}/{len(candidates)}")
 
     await engine.dispose()
     print(f"\nDone. Added {added} tracks to demo collection, skipped {skipped}.")
