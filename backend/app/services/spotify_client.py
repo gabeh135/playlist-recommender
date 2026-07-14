@@ -1,9 +1,41 @@
+import threading
+import time
+from collections import deque
+
 import requests
 import spotipy
 import urllib3
 from spotipy.oauth2 import SpotifyClientCredentials
 
 from app.core.config import settings
+
+
+class _RateLimiter:
+    """Spotify doesn't publish the actual dev-mode quota, so max_calls/period
+    is a conservative guess not a known number.
+    """
+
+    def __init__(self, max_calls: int, period: float):
+        self._max_calls = max_calls
+        self._period = period
+        self._calls: deque[float] = deque()
+        self._lock = threading.Lock()
+
+    def acquire(self):
+        with self._lock:
+            now = time.monotonic()
+            while self._calls and now - self._calls[0] > self._period:
+                self._calls.popleft()
+
+            if len(self._calls) >= self._max_calls:
+                wait = self._period - (now - self._calls[0])
+                if wait > 0:
+                    time.sleep(wait)
+                now = time.monotonic()
+                while self._calls and now - self._calls[0] > self._period:
+                    self._calls.popleft()
+
+            self._calls.append(now)
 
 
 class SpotifyClient:
@@ -26,6 +58,15 @@ class SpotifyClient:
         adapter = requests.adapters.HTTPAdapter(max_retries=retry)
         self._sp._session.mount("https://", adapter)
         self._sp._session.mount("http://", adapter)
+
+        self._limiter = _RateLimiter(max_calls=30, period=30.0)
+        original_send = self._sp._session.send
+
+        def _throttled_send(request, **kwargs):
+            self._limiter.acquire()
+            return original_send(request, **kwargs)
+
+        self._sp._session.send = _throttled_send
 
     def search_tracks(self, query: str, limit: int) -> list[dict]:
         results = []

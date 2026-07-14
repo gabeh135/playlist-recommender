@@ -1,9 +1,8 @@
-"""script to seed the demo user's collection with ~1000 tracks from LastFM charts"""
+"""script to seed the demo user's collection with ~1000 tracks sampled across Last.fm genre tags"""
 
 import asyncio
 import os
 import sys
-import time
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -22,43 +21,45 @@ from app.services.lastfm_client import LastFmClient
 from app.services.spotify_client import SpotifyClient
 
 TARGET = 1000
-LASTFM_PAGE_SIZE = 50
-SPOTIFY_SEARCH_DELAY = 0.1
+GENRE_TAGS = [
+    "pop", "rock", "hip-hop", "r&b", "electronic", "country",
+    "indie", "metal", "jazz", "k-pop", "latin", "folk",
+    "punk", "reggae", "classical",
+]
+
+
+def get_lastfm_tracks_by_tag(api_key: str, tag: str, limit: int) -> list[dict]:
+    client = httpx.Client()
+    resp = client.get(
+        "http://ws.audioscrobbler.com/2.0/",
+        params={
+            "method": "tag.gettoptracks",
+            "tag": tag,
+            "limit": limit,
+            "api_key": api_key,
+            "format": "json",
+        },
+    ).json()
+
+    raw = resp.get("tracks", {}).get("track", [])
+    return [{"title": t["name"], "artist": t["artist"]["name"]} for t in raw]
+
 
 def get_lastfm_top_tracks(api_key: str, target: int) -> list[dict]:
-    """Fetch top tracks from Last.fm charts across multiple pages."""
-    client = httpx.Client()
+    """Samples across genre tags instead of one global chart, so the seed collection spans genres instead of skewing toward whatever's currently most-scrobbled overall."""
+    per_tag = target // len(GENRE_TAGS)
+    seen = set()
     tracks = []
-    page = 1
 
-    while len(tracks) < target:
-        resp = client.get(
-            "http://ws.audioscrobbler.com/2.0/",
-            params={
-                "method": "chart.getTopTracks",
-                "limit": LASTFM_PAGE_SIZE,
-                "page": page,
-                "api_key": api_key,
-                "format": "json",
-            },
-        ).json()
+    for tag in GENRE_TAGS:
+        tag_tracks = get_lastfm_tracks_by_tag(api_key, tag, per_tag)
+        print(f"  {tag}: {len(tag_tracks)} tracks")
 
-        raw = resp.get("tracks", {}).get("track", [])
-        if not raw:
-            break
-
-        for t in raw:
-            tracks.append({
-                "title": t["name"],
-                "artist": t["artist"]["name"],
-            })
-
-        total_pages = int(resp.get("tracks", {}).get("@attr", {}).get("totalPages", 1))
-        print(f"  Last.fm page {page}/{min(total_pages, (target // LASTFM_PAGE_SIZE) + 1)} — {len(tracks)} tracks so far")
-
-        if page >= total_pages:
-            break
-        page += 1
+        for t in tag_tracks:
+            key = (t["title"].lower(), t["artist"].lower())
+            if key not in seen:
+                seen.add(key)
+                tracks.append(t)
 
     return tracks[:target]
 
@@ -96,38 +97,49 @@ async def main():
         candidates = get_lastfm_top_tracks(settings.lastfm_api_key, TARGET)
         print(f"Got {len(candidates)} candidates\n")
 
-        added = 0
-        skipped = 0
-
+        resolved: list[dict | None] = []
         for i, candidate in enumerate(candidates, 1):
             title = candidate["title"]
             artist = candidate["artist"]
-            print(f"[{i}/{len(candidates)}] {title} — {artist}")
+            print(f"[{i}/{len(candidates)}] resolving {title} — {artist}")
 
-            # Search Spotify for this track
             try:
                 results = spotify.search_tracks(f"{artist} {title}", limit=1)
             except Exception as e:
                 print(f"  Spotify search failed: {e} — skipping")
-                skipped += 1
+                resolved.append(None)
                 continue
 
             if not results:
                 print("  Not found on Spotify — skipping")
-                skipped += 1
+                resolved.append(None)
                 continue
 
             raw = results[0]
-            spotify_id = raw["id"]
+            existing = await db.execute(select(Track).where(Track.spotify_id == raw["id"]))
+            resolved.append({"raw": raw, "track": existing.scalar_one_or_none()})
 
-            # Check if track already in DB
-            existing = await db.execute(select(Track).where(Track.spotify_id == spotify_id))
-            track = existing.scalar_one_or_none()
+        new_entries = [r for r in resolved if r is not None and r["track"] is None]
+        artist_ids = list({r["raw"]["artists"][0]["id"] for r in new_entries})
+        genre_map = spotify.get_artist_genres(artist_ids) if artist_ids else {}
+        print(f"\nFetched genres for {len(artist_ids)} unique artists\n")
+
+        added = 0
+        skipped = 0
+
+        for i, entry in enumerate(resolved, 1):
+            if entry is None:
+                skipped += 1
+                continue
+
+            raw = entry["raw"]
+            track = entry["track"]
 
             if track is None:
                 artist_id = raw["artists"][0]["id"]
                 artist_name = raw["artists"][0]["name"]
                 track_title = raw["name"]
+                print(f"[{i}/{len(resolved)}] {track_title} — {artist_name}")
                 album = raw.get("album", {}).get("name", "")
 
                 release_year = None
@@ -141,7 +153,6 @@ async def main():
                 images = raw.get("album", {}).get("images", [])
                 album_art_url = images[0]["url"] if images else None
 
-                genre_map = spotify.get_artist_genres([artist_id])
                 genres = genre_map.get(artist_id, [])
                 tags = lastfm.get_track_tags(artist_name, track_title)
 
@@ -151,7 +162,7 @@ async def main():
                 genre_tag_embedding = embed_text(genre_tag_input)
 
                 track = Track(
-                    spotify_id=spotify_id,
+                    spotify_id=raw["id"],
                     title=track_title,
                     artist=artist_name,
                     album=album,
@@ -165,11 +176,11 @@ async def main():
                 )
                 db.add(track)
                 await db.flush()
-                print(f"  → Enriched and stored (spotify_id: {spotify_id})")
+                print(f"  → Enriched and stored (spotify_id: {track.spotify_id})")
             else:
-                print(f"  → Already in tracks table")
+                print(f"[{i}/{len(resolved)}] {track.title} — {track.artist}")
+                print("  → Already in tracks table")
 
-            # Check if already in demo user's collection
             ct_result = await db.execute(
                 select(CollectionTrack).where(
                     CollectionTrack.user_id == demo_user_id,
@@ -187,12 +198,9 @@ async def main():
                 ))
                 added += 1
 
-            # Commit every 50 tracks to avoid losing progress
             if i % 50 == 0:
                 await db.commit()
                 print(f"  [checkpoint] committed {i} tracks")
-
-            time.sleep(SPOTIFY_SEARCH_DELAY)
 
         await db.commit()
 
