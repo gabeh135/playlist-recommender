@@ -54,8 +54,7 @@ class User(Base):
     spotify_access_token: Mapped[str | None] = mapped_column(String, nullable=True)
     spotify_refresh_token: Mapped[str | None] = mapped_column(String, nullable=True)
     spotify_token_expires_at: Mapped[str | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    # stored separately because Spotify refresh tokens don't expose an issuance timestamp;
-    # needed to detect 6-month expiry (Spotify policy introduced June 2026)
+    # needed to detect Spotify-policy 6-month expiry
     spotify_authorized_at: Mapped[str | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
@@ -90,6 +89,7 @@ class ClusteringRun(Base):
     n_clusters: Mapped[int] = mapped_column(Integer, nullable=False)
     algorithm: Mapped[str] = mapped_column(String, nullable=False)
     outlier_threshold: Mapped[float] = mapped_column(Float, nullable=False)
+    silhouette_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     run_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
