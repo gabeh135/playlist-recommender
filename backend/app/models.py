@@ -43,6 +43,7 @@ class Track(Base):
     genres: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
     tags: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
     embedding: Mapped[list[float] | None] = mapped_column(Vector(384), nullable=True)
+    genre_tag_embedding: Mapped[list[float] | None] = mapped_column(Vector(384), nullable=True)
     enriched_at: Mapped[str | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 

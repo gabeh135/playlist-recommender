@@ -88,6 +88,8 @@ async def add_track(
 
         embedding_input = f"{title} by {artist_name}. Genres: {', '.join(genres)}. Tags: {', '.join(tags)}"
         embedding = await asyncio.to_thread(embed_text, embedding_input)
+        genre_tag_input = f"Genres: {', '.join(genres)}. Tags: {', '.join(tags)}"
+        genre_tag_embedding = await asyncio.to_thread(embed_text, genre_tag_input)
 
         track = Track(
             spotify_id=body.spotify_id,
@@ -99,6 +101,7 @@ async def add_track(
             genres=genres,
             tags=tags,
             embedding=embedding,
+            genre_tag_embedding=genre_tag_embedding,
             enriched_at=datetime.now(timezone.utc),
         )
         db.add(track)
@@ -178,6 +181,8 @@ async def import_playlist(
 
         embedding_input = f"{title} by {artist_name}. Genres: {', '.join(genres)}. Tags: {', '.join(tags)}"
         embedding = await asyncio.to_thread(embed_text, embedding_input)
+        genre_tag_input = f"Genres: {', '.join(genres)}. Tags: {', '.join(tags)}"
+        genre_tag_embedding = await asyncio.to_thread(embed_text, genre_tag_input)
 
         track = Track(
             spotify_id=raw["id"],
@@ -189,6 +194,7 @@ async def import_playlist(
             genres=genres,
             tags=tags,
             embedding=embedding,
+            genre_tag_embedding=genre_tag_embedding,
             enriched_at=datetime.now(timezone.utc),
         )
         db.add(track)

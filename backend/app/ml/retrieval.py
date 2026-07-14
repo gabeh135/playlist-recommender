@@ -14,13 +14,13 @@ async def search_collection(
 
     Returns (Track, score) pairs ordered best-first; score is 0–1, higher is closer.
     """
-    distance = Track.embedding.cosine_distance(query_embedding)
+    distance = Track.genre_tag_embedding.cosine_distance(query_embedding)
 
     result = await db.execute(
         select(Track, distance.label("distance"))
         .join(CollectionTrack, CollectionTrack.track_id == Track.id)
         .where(CollectionTrack.user_id == user_id)
-        .where(Track.embedding.isnot(None))
+        .where(Track.genre_tag_embedding.isnot(None))
         .order_by(distance)
         .limit(limit)
     )

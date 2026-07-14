@@ -147,6 +147,8 @@ async def main():
 
                 embedding_input = f"{track_title} by {artist_name}. Genres: {', '.join(genres)}. Tags: {', '.join(tags)}"
                 embedding = embed_text(embedding_input)
+                genre_tag_input = f"Genres: {', '.join(genres)}. Tags: {', '.join(tags)}"
+                genre_tag_embedding = embed_text(genre_tag_input)
 
                 track = Track(
                     spotify_id=spotify_id,
@@ -158,6 +160,7 @@ async def main():
                     genres=genres,
                     tags=tags,
                     embedding=embedding,
+                    genre_tag_embedding=genre_tag_embedding,
                     enriched_at=datetime.now(timezone.utc),
                 )
                 db.add(track)
