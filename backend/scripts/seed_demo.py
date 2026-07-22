@@ -76,7 +76,12 @@ async def process_batch(batch, start_index, total, demo_user_id, spotify, lastfm
         try:
             results = spotify.search_tracks(f"{artist} {title}", limit=1)
         except Exception as e:
-            print(f"  Spotify search failed: {e} — skipping")
+            status = getattr(e, "http_status", None)
+            if status == 429:
+                wait = (getattr(e, "headers", None) or {}).get("Retry-After", "unknown")
+                print(f"  [temporary] rate limited, retrying in {wait}s — skipping this candidate for now")
+            else:
+                print(f"  [temporary] Spotify search failed: {e} — skipping")
             resolved.append(None)
             continue
 
