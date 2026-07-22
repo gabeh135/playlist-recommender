@@ -51,9 +51,8 @@ class SpotifyClient:
 
         retry = urllib3.Retry(
             total=3,
-            status_forcelist=(429, 500, 502, 503, 504),
+            status_forcelist=(500, 502, 503, 504),
             backoff_factor=0.5,
-            respect_retry_after_header=False,
         )
         adapter = requests.adapters.HTTPAdapter(max_retries=retry)
         self._sp._session.mount("https://", adapter)
@@ -63,8 +62,15 @@ class SpotifyClient:
         original_send = self._sp._session.send
 
         def _throttled_send(request, **kwargs):
-            self._limiter.acquire()
-            return original_send(request, **kwargs)
+            while True:
+                self._limiter.acquire()
+                response = original_send(request, **kwargs)
+                if response.status_code != 429:
+                    return response
+
+                wait = int(response.headers.get("Retry-After", 60))
+                print(f"Spotify rate limit hit — waiting {wait}s ({wait / 3600:.1f}h) before retrying...")
+                time.sleep(wait)
 
         self._sp._session.send = _throttled_send
 
