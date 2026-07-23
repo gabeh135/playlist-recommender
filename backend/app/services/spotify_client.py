@@ -30,7 +30,7 @@ class _RateLimiter:
             if len(self._calls) >= self._max_calls:
                 wait = self._period - (now - self._calls[0])
                 if wait > 0:
-                    print(f"  [temporary] local throttle, pausing {wait:.1f}s ({self._max_calls} calls/{self._period:.0f}s cap)")
+                    print(f"  [temporary] local throttle, pausing {wait:.1f}s ({self._max_calls} calls/{self._period:.0f}s cap)") # TODO: remove
                     time.sleep(wait)
                 now = time.monotonic()
                 while self._calls and now - self._calls[0] > self._period:
@@ -74,6 +74,7 @@ class SpotifyClient:
                 time.sleep(wait)
 
         self._sp._session.send = _throttled_send
+        self._sp.auth_manager._session.send = _throttled_send
 
     def search_tracks(self, query: str, limit: int) -> list[dict]:
         results = []
