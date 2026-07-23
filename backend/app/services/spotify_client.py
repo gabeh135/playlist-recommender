@@ -30,6 +30,7 @@ class _RateLimiter:
             if len(self._calls) >= self._max_calls:
                 wait = self._period - (now - self._calls[0])
                 if wait > 0:
+                    print(f"  [temporary] local throttle, pausing {wait:.1f}s ({self._max_calls} calls/{self._period:.0f}s cap)")
                     time.sleep(wait)
                 now = time.monotonic()
                 while self._calls and now - self._calls[0] > self._period:
