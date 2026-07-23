@@ -2,12 +2,31 @@ import threading
 import time
 from collections import deque
 
+import redis
 import requests
 import spotipy
 import urllib3
 from spotipy.oauth2 import SpotifyClientCredentials
 
 from app.core.config import settings
+
+_redis_client = redis.Redis.from_url(settings.redis_url, socket_timeout=2, socket_connect_timeout=2)
+_COOLDOWN_KEY = "spotify:cooldown_until"
+
+
+def _get_cooldown_remaining() -> float:
+    try:
+        value = _redis_client.get(_COOLDOWN_KEY)
+    except redis.RedisError:
+        return 0.0
+    return max(0.0, float(value) - time.time()) if value else 0.0
+
+
+def _set_cooldown(seconds: float):
+    try:
+        _redis_client.set(_COOLDOWN_KEY, time.time() + seconds, ex=int(seconds) + 60)
+    except redis.RedisError:
+        pass
 
 
 class _RateLimiter:
@@ -64,12 +83,18 @@ class SpotifyClient:
 
         def _throttled_send(request, **kwargs):
             while True:
+                shared_wait = _get_cooldown_remaining()
+                if shared_wait > 0:
+                    print(f"Spotify rate limit active (shared) — waiting {shared_wait:.0f}s before trying...")
+                    time.sleep(shared_wait)
+
                 self._limiter.acquire()
                 response = original_send(request, **kwargs)
                 if response.status_code != 429:
                     return response
 
                 wait = int(response.headers.get("Retry-After", 60))
+                _set_cooldown(wait)
                 print(f"Spotify rate limit hit — waiting {wait}s ({wait / 3600:.1f}h) before retrying...")
                 time.sleep(wait)
 
