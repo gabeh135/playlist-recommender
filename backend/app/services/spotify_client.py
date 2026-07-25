@@ -12,6 +12,13 @@ from app.core.config import settings
 
 _redis_client = redis.Redis.from_url(settings.redis_url, socket_timeout=2, socket_connect_timeout=2)
 _COOLDOWN_KEY = "spotify:cooldown_until"
+MAX_TOLERABLE_WAIT_SECONDS = 60
+
+
+class SpotifyRateLimitedError(Exception):
+    def __init__(self, wait_seconds: float):
+        self.wait_seconds = wait_seconds
+        super().__init__(f"Spotify rate limit wait ({wait_seconds:.0f}s) exceeds tolerable threshold")
 
 
 def _get_cooldown_remaining() -> float:
@@ -73,6 +80,7 @@ class SpotifyClient:
             total=3,
             status_forcelist=(500, 502, 503, 504),
             backoff_factor=0.5,
+            respect_retry_after_header=False,
         )
         adapter = requests.adapters.HTTPAdapter(max_retries=retry)
         self._sp._session.mount("https://", adapter)
@@ -84,6 +92,8 @@ class SpotifyClient:
         def _throttled_send(request, **kwargs):
             while True:
                 shared_wait = _get_cooldown_remaining()
+                if shared_wait > MAX_TOLERABLE_WAIT_SECONDS:
+                    raise SpotifyRateLimitedError(shared_wait)
                 if shared_wait > 0:
                     print(f"Spotify rate limit active (shared) — waiting {shared_wait:.0f}s before trying...")
                     time.sleep(shared_wait)
@@ -95,6 +105,9 @@ class SpotifyClient:
 
                 wait = int(response.headers.get("Retry-After", 60))
                 _set_cooldown(wait)
+                if wait > MAX_TOLERABLE_WAIT_SECONDS:
+                    raise SpotifyRateLimitedError(wait)
+
                 print(f"Spotify rate limit hit — waiting {wait}s ({wait / 3600:.1f}h) before retrying...")
                 time.sleep(wait)
 
@@ -124,6 +137,8 @@ class SpotifyClient:
             try:
                 artist = self._sp.artist(artist_id)
                 genres[artist["id"]] = artist["genres"]
+            except SpotifyRateLimitedError:
+                raise
             except Exception:
                 genres[artist_id] = []
         return genres
@@ -131,11 +146,10 @@ class SpotifyClient:
     def get_track(self, spotify_id: str) -> dict | None:
         try:
             return self._sp.track(spotify_id)
+        except SpotifyRateLimitedError:
+            raise
         except Exception:
-            try:
-                return self._sp.track(spotify_id)
-            except Exception:
-                return None
+            return None
 
     def get_playlist_tracks(self, playlist_id: str) -> list[dict]:
         tracks = []
@@ -148,3 +162,6 @@ class SpotifyClient:
             response = self._sp.next(response) if response["next"] else None
 
         return tracks
+
+
+spotify_client = SpotifyClient()

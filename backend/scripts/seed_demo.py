@@ -18,7 +18,8 @@ from app.core.config import settings
 from app.ml.encoders.embed import embed_text
 from app.models import Base, CollectionSource, CollectionTrack, Track, User
 from app.services.lastfm_client import LastFmClient
-from app.services.spotify_client import SpotifyClient
+from app.services.spotify_client import SpotifyRateLimitedError
+from app.services.spotify_client import spotify_client as spotify
 
 TARGET = 1000
 BATCH_SIZE = 50
@@ -75,6 +76,8 @@ async def process_batch(batch, start_index, total, demo_user_id, spotify, lastfm
 
         try:
             results = spotify.search_tracks(f"{artist} {title}", limit=1)
+        except SpotifyRateLimitedError:
+            raise
         except Exception as e:
             print(f"  [temporary] Spotify search failed: {e} — skipping")
             resolved.append(None)
@@ -180,7 +183,6 @@ async def main():
     engine = create_async_engine(db_url, echo=False)
     async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
-    spotify = SpotifyClient()
     lastfm = LastFmClient()
 
     async with async_session() as db:
@@ -209,14 +211,19 @@ async def main():
         added = 0
         skipped = 0
 
-        for batch_start in range(0, len(candidates), BATCH_SIZE):
-            batch = candidates[batch_start:batch_start + BATCH_SIZE]
-            batch_added, batch_skipped = await process_batch(
-                batch, batch_start, len(candidates), demo_user_id, spotify, lastfm, db
-            )
-            added += batch_added
-            skipped += batch_skipped
-            print(f"  [checkpoint] committed through {batch_start + len(batch)}/{len(candidates)}")
+        try:
+            for batch_start in range(0, len(candidates), BATCH_SIZE):
+                batch = candidates[batch_start:batch_start + BATCH_SIZE]
+                batch_added, batch_skipped = await process_batch(
+                    batch, batch_start, len(candidates), demo_user_id, spotify, lastfm, db
+                )
+                added += batch_added
+                skipped += batch_skipped
+                print(f"  [checkpoint] committed through {batch_start + len(batch)}/{len(candidates)}")
+        except SpotifyRateLimitedError as e:
+            print(f"\nAborting: Spotify rate limit is {e.wait_seconds:.0f}s ({e.wait_seconds / 3600:.1f}h) — too long to wait out.")
+            print(f"Added {added} tracks before stopping, skipped {skipped}. Re-run later.")
+            sys.exit(1)
 
     await engine.dispose()
     print(f"\nDone. Added {added} tracks to demo collection, skipped {skipped}.")

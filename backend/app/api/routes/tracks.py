@@ -3,11 +3,9 @@ import asyncio
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
-from app.services.spotify_client import SpotifyClient
+from app.services.spotify_client import spotify_client as spotify
 
 router = APIRouter(prefix="/tracks", tags=["tracks"])
-
-spotify = SpotifyClient()
 
 
 class TrackCandidate(BaseModel):

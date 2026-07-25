@@ -12,11 +12,10 @@ from app.core.deps import get_current_user
 from app.ml.encoders.embed import embed_text
 from app.models import CollectionSource, CollectionTrack, Track, User
 from app.services.lastfm_client import LastFmClient
-from app.services.spotify_client import SpotifyClient
+from app.services.spotify_client import spotify_client as spotify
 
 router = APIRouter(prefix="/collection", tags=["collection"])
 
-spotify = SpotifyClient()
 lastfm = LastFmClient()
 
 
