@@ -1,9 +1,14 @@
 import { useState } from "react"
+import { Sparkles } from "lucide-react"
 import { useUser } from "@/hooks/useUser"
 import { apiFetch } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Slider } from "@/components/ui/slider"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
+import TrackRow from "@/components/TrackRow"
+import EmptyState from "@/components/EmptyState"
 
 interface PlaylistTrack {
   position: number
@@ -74,45 +79,59 @@ export default function Generate() {
             />
           </div>
 
-          <Button type="submit" disabled={loading || !userId || !prompt.trim()}>
-            {loading ? "Generating..." : "Generate"}
+          <Button type="submit" loading={loading} disabled={!userId || !prompt.trim()}>
+            Generate
           </Button>
         </form>
 
-        {error && <p className="text-sm text-destructive">{error}</p>}
+        {error && (
+          <div className="rounded-md border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {error}
+          </div>
+        )}
       </div>
 
-      {result && (
-        <div className="space-y-4">
-          <h2 className="text-lg font-semibold">{result.name}</h2>
-          <ul className="space-y-1">
-            {result.tracks.map((track) => (
-              <li
-                key={track.spotify_id}
-                className="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-muted"
-              >
-                <span className="text-sm text-muted-foreground w-5 shrink-0 text-right">
-                  {track.position + 1}
-                </span>
-                {track.album_art_url ? (
-                  <img
-                    src={track.album_art_url}
-                    alt={track.album}
-                    className="w-10 h-10 rounded object-cover shrink-0"
-                  />
-                ) : (
-                  <div className="w-10 h-10 rounded bg-muted shrink-0" />
-                )}
-                <div className="min-w-0">
-                  <p className="font-medium truncate">{track.title}</p>
-                  <p className="text-sm text-muted-foreground truncate">
-                    {track.artist} · {track.album}
-                  </p>
+      {loading ? (
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-5 w-40" />
+          </CardHeader>
+          <CardContent className="space-y-1">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-3 px-3 py-2">
+                <Skeleton className="size-10 shrink-0 rounded-md" />
+                <div className="min-w-0 flex-1 space-y-2">
+                  <Skeleton className="h-4 w-2/5" />
+                  <Skeleton className="h-3 w-3/5" />
                 </div>
-              </li>
+              </div>
             ))}
-          </ul>
-        </div>
+          </CardContent>
+        </Card>
+      ) : result ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>{result.name}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1">
+            {result.tracks.map((track) => (
+              <TrackRow
+                key={track.spotify_id}
+                position={track.position + 1}
+                albumArtUrl={track.album_art_url}
+                title={track.title}
+                artist={track.artist}
+                album={track.album}
+              />
+            ))}
+          </CardContent>
+        </Card>
+      ) : (
+        <EmptyState
+          icon={Sparkles}
+          title="No playlist yet"
+          description="Describe a vibe above and we'll pull matching tracks from your collection."
+        />
       )}
     </div>
   )

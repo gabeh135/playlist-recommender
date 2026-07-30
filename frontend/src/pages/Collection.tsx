@@ -1,10 +1,16 @@
 import { useState, useEffect, useRef, useCallback } from "react"
 import { useVirtualizer } from "@tanstack/react-virtual"
+import { Check, Library, SearchX, ServerCrash } from "lucide-react"
 import { useUser } from "@/hooks/useUser"
 import { apiFetch } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Card } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Separator } from "@/components/ui/separator"
 import { Spinner } from "@/components/ui/spinner"
+import TrackRow from "@/components/TrackRow"
+import EmptyState from "@/components/EmptyState"
 
 interface TrackCandidate {
   spotify_id: string
@@ -34,19 +40,39 @@ interface CollectionPage {
 
 const PAGE_SIZE = 50
 
+const SOURCE_LABELS: Record<string, string> = {
+  SEARCH: "Search",
+  PLAYLIST_IMPORT: "Playlist import",
+  LIKED_SONGS: "Liked Songs",
+}
+
+function SkeletonRow() {
+  return (
+    <div className="flex items-center gap-3 px-3 py-2">
+      <Skeleton className="size-10 shrink-0 rounded-md" />
+      <div className="min-w-0 flex-1 space-y-2">
+        <Skeleton className="h-4 w-2/5" />
+        <Skeleton className="h-3 w-3/5" />
+      </div>
+    </div>
+  )
+}
+
 export default function Collection() {
   const userId = useUser()
 
   const [query, setQuery] = useState("")
-  const [searchResults, setSearchResults] = useState<TrackCandidate[]>([])
+  const [searchResults, setSearchResults] = useState<TrackCandidate[] | null>(null)
   const [playlistUrl, setPlaylistUrl] = useState("")
 
   const [tracks, setTracks] = useState<CollectionTrack[]>([])
   const [total, setTotal] = useState(0)
   const [loadingMore, setLoadingMore] = useState(true)
+  const [loadError, setLoadError] = useState(false)
 
   const [searching, setSearching] = useState(false)
   const [adding, setAdding] = useState<string | null>(null)
+  const [justAdded, setJustAdded] = useState<string | null>(null)
   const [importing, setImporting] = useState(false)
   const [loadingDemo, setLoadingDemo] = useState(false)
 
@@ -63,8 +89,10 @@ export default function Collection() {
         )
         setTracks((prev) => (replace ? data.items : [...prev, ...data.items]))
         setTotal(data.total)
+        if (offset === 0) setLoadError(false)
       } catch (err) {
         console.error(err)
+        if (offset === 0) setLoadError(true)
       } finally {
         setLoadingMore(false)
       }
@@ -82,7 +110,7 @@ export default function Collection() {
   const rowVirtualizer = useVirtualizer({
     count: hasMore ? tracks.length + 1 : tracks.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 56,
+    estimateSize: () => 60,
     overscan: 5,
   })
 
@@ -134,12 +162,16 @@ export default function Collection() {
         method: "POST",
         body: JSON.stringify({ spotify_id: track.spotify_id }),
       })
-      setSearchResults((prev) => prev.filter((t) => t.spotify_id !== track.spotify_id))
+      setAdding(null)
+      setJustAdded(track.spotify_id)
       // Reset to page 0 so the new track appears at the top (sorted by added_at desc)
       await fetchPage(0, true)
+      setTimeout(() => {
+        setJustAdded((current) => (current === track.spotify_id ? null : current))
+        setSearchResults((prev) => prev?.filter((t) => t.spotify_id !== track.spotify_id) ?? prev)
+      }, 1200)
     } catch (err) {
       console.error(err)
-    } finally {
       setAdding(null)
     }
   }
@@ -162,9 +194,11 @@ export default function Collection() {
     }
   }
 
+  const showSearchPanel = searching || searchResults !== null
+
   return (
-    <div className="space-y-10">
-      <div className="space-y-6">
+    <div className="flex h-full min-h-0 flex-col gap-6">
+      <div className="shrink-0 space-y-6">
         <h2 className="text-lg font-semibold">Add tracks</h2>
 
         <form onSubmit={handleSearch} className="flex gap-2">
@@ -173,48 +207,58 @@ export default function Collection() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
-          <Button type="submit" disabled={searching || !userId}>
-            {searching ? "Searching..." : "Search"}
+          <Button type="submit" loading={searching} disabled={!userId}>
+            Search
           </Button>
         </form>
 
-        {searchResults.length > 0 && (
-          <ul className="space-y-1">
-            {searchResults.map((track) => (
-              <li
-                key={track.spotify_id}
-                className="flex items-center gap-3 justify-between px-3 py-2 rounded-md hover:bg-muted"
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  {track.album_art_url ? (
-                    <img
-                      src={track.album_art_url}
-                      alt={track.album}
-                      className="w-10 h-10 rounded object-cover shrink-0"
-                    />
-                  ) : (
-                    <div className="w-10 h-10 rounded bg-muted shrink-0" />
-                  )}
-                  <div className="min-w-0">
-                    <p className="font-medium truncate">{track.title}</p>
-                    <p className="text-sm text-muted-foreground truncate">
-                      {track.artist} · {track.album}
-                      {track.release_year ? ` · ${track.release_year}` : ""}
-                    </p>
-                  </div>
-                </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => handleAddTrack(track)}
-                  disabled={adding === track.spotify_id}
-                  className="ml-4 shrink-0"
-                >
-                  {adding === track.spotify_id ? "Adding..." : "Add"}
-                </Button>
-              </li>
-            ))}
-          </ul>
+        {showSearchPanel && (
+          <Card className="max-h-80 overflow-y-auto p-2">
+            {searching ? (
+              <div className="space-y-1">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <SkeletonRow key={i} />
+                ))}
+              </div>
+            ) : searchResults && searchResults.length === 0 ? (
+              <EmptyState
+                icon={SearchX}
+                title={`No matches for "${query}"`}
+                description="Try a different search term."
+                className="border-0 ring-0"
+              />
+            ) : (
+              <div className="space-y-1">
+                {searchResults?.map((track) => (
+                  <TrackRow
+                    key={track.spotify_id}
+                    albumArtUrl={track.album_art_url}
+                    title={track.title}
+                    artist={track.artist}
+                    album={track.album}
+                    year={track.release_year}
+                    trailing={
+                      justAdded === track.spotify_id ? (
+                        <Button size="sm" variant="outline" disabled className="text-primary">
+                          <Check className="size-3.5" />
+                          Added
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          loading={adding === track.spotify_id}
+                          onClick={() => handleAddTrack(track)}
+                        >
+                          Add
+                        </Button>
+                      )
+                    }
+                  />
+                ))}
+              </div>
+            )}
+          </Card>
         )}
 
         <form onSubmit={handleImport} className="flex gap-2">
@@ -223,13 +267,15 @@ export default function Collection() {
             value={playlistUrl}
             onChange={(e) => setPlaylistUrl(e.target.value)}
           />
-          <Button type="submit" disabled={importing || !userId}>
-            {importing ? "Importing..." : "Import playlist"}
+          <Button type="submit" loading={importing} disabled={!userId}>
+            Import playlist
           </Button>
         </form>
       </div>
 
-      <div className="space-y-4">
+      <Separator />
+
+      <div className="flex min-h-0 flex-1 flex-col gap-3">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold">
             Your tracks{total > 0 ? ` (${total})` : ""}
@@ -238,83 +284,88 @@ export default function Collection() {
             <Button
               size="sm"
               variant="outline"
+              loading={loadingDemo}
               onClick={handleLoadDemo}
-              disabled={loadingDemo || !userId}
+              disabled={!userId}
             >
-              {loadingDemo ? "Loading..." : "Load sample collection"}
+              Load sample collection
             </Button>
           )}
         </div>
 
         {total === 0 && loadingMore ? (
-          <div className="flex items-center justify-center py-12">
-            <Spinner className="size-6 text-muted-foreground" />
-          </div>
-        ) : total === 0 ? (
-          <div className="space-y-3">
-            <p className="text-muted-foreground text-sm">
-              No tracks yet, search above to get started.
-            </p>
-            <Button
-              variant="outline"
-              onClick={handleLoadDemo}
-              disabled={loadingDemo || !userId}
-            >
-              {loadingDemo ? "Loading sample collection..." : "Load sample collection"}
-            </Button>
-          </div>
-        ) : (
-          <div
-            ref={parentRef}
-            className="h-[calc(100vh-22rem)] min-h-64 overflow-y-auto rounded-md"
-          >
-            <div
-              style={{ height: rowVirtualizer.getTotalSize() }}
-              className="relative"
-            >
-              {virtualItems.map((virtualRow) => {
-                const isLoader = virtualRow.index >= tracks.length
-                const track = tracks[virtualRow.index]
-
-                return (
-                  <div
-                    key={virtualRow.key}
-                    data-index={virtualRow.index}
-                    ref={rowVirtualizer.measureElement}
-                    style={{ transform: `translateY(${virtualRow.start}px)` }}
-                    className="absolute top-0 left-0 right-0"
-                  >
-                    {isLoader ? (
-                      <div className="flex items-center justify-center py-4">
-                        <span className="text-sm text-muted-foreground">
-                          Loading...
-                        </span>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-muted">
-                        {track.album_art_url ? (
-                          <img
-                            src={track.album_art_url}
-                            alt={track.album}
-                            className="w-10 h-10 rounded object-cover shrink-0"
-                          />
-                        ) : (
-                          <div className="w-10 h-10 rounded bg-muted shrink-0" />
-                        )}
-                        <div className="min-w-0">
-                          <p className="font-medium truncate">{track.title}</p>
-                          <p className="text-sm text-muted-foreground truncate">
-                            {track.artist} · {track.album}
-                            {track.release_year ? ` · ${track.release_year}` : ""}
-                          </p>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
+          <Card className="p-2">
+            <div className="space-y-1">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <SkeletonRow key={i} />
+              ))}
             </div>
-          </div>
+          </Card>
+        ) : loadError ? (
+          <EmptyState
+            icon={ServerCrash}
+            title="Couldn't load your collection"
+            description="Something went wrong reaching the server."
+            action={
+              <Button size="sm" variant="outline" onClick={() => fetchPage(0, true)}>
+                Retry
+              </Button>
+            }
+          />
+        ) : total === 0 ? (
+          <EmptyState
+            icon={Library}
+            title="No tracks yet"
+            description="Search above to add tracks, or load a sample collection to explore the app."
+            action={
+              <Button variant="outline" loading={loadingDemo} onClick={handleLoadDemo}>
+                Load sample collection
+              </Button>
+            }
+          />
+        ) : (
+          <Card className="min-h-0 flex-1 overflow-hidden p-0">
+            <div className="relative h-full">
+              <div ref={parentRef} className="h-full overflow-y-auto p-2">
+                <div
+                  style={{ height: rowVirtualizer.getTotalSize() }}
+                  className="relative"
+                >
+                  {virtualItems.map((virtualRow) => {
+                    const isLoader = virtualRow.index >= tracks.length
+                    const track = tracks[virtualRow.index]
+
+                    return (
+                      <div
+                        key={virtualRow.key}
+                        data-index={virtualRow.index}
+                        ref={rowVirtualizer.measureElement}
+                        style={{ transform: `translateY(${virtualRow.start}px)` }}
+                        className="absolute top-0 left-0 right-0"
+                      >
+                        {isLoader ? (
+                          <div className="flex items-center justify-center py-4">
+                            <Spinner className="size-4 text-muted-foreground" />
+                          </div>
+                        ) : (
+                          <TrackRow
+                            albumArtUrl={track.album_art_url}
+                            title={track.title}
+                            artist={track.artist}
+                            album={track.album}
+                            year={track.release_year}
+                            sourceLabel={SOURCE_LABELS[track.source]}
+                          />
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+              <div className="pointer-events-none absolute inset-x-0 top-0 h-4 bg-gradient-to-b from-card to-transparent" />
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-4 bg-gradient-to-t from-card to-transparent" />
+            </div>
+          </Card>
         )}
       </div>
     </div>
