@@ -30,7 +30,7 @@ export default function TrackRow({
   return (
     <div
       className={cn(
-        "flex items-center gap-3 rounded-lg px-3 py-2 transition-all",
+        "group flex items-center gap-3 rounded-lg px-3 py-2 transition-all",
         trailing && "hover:scale-[1.01] hover:bg-muted"
       )}
     >

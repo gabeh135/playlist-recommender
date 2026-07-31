@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import func, insert, select
+from sqlalchemy import delete, func, insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -270,6 +270,35 @@ async def get_collection(
             for track, ct in rows
         ],
     )
+
+
+@router.delete("/tracks/{track_id}", status_code=204)
+async def remove_track(
+    track_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        delete(CollectionTrack).where(
+            CollectionTrack.user_id == user.id,
+            CollectionTrack.track_id == track_id,
+        )
+    )
+    if result.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Track not in collection")
+    await db.commit()
+
+
+@router.delete("/tracks", status_code=200)
+async def clear_collection(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        delete(CollectionTrack).where(CollectionTrack.user_id == user.id)
+    )
+    await db.commit()
+    return {"removed": result.rowcount}
 
 
 @router.post("/demo", status_code=201)

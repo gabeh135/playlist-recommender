@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react"
 import { useVirtualizer } from "@tanstack/react-virtual"
-import { Check, Library, SearchX, ServerCrash } from "lucide-react"
+import { Check, Library, SearchX, ServerCrash, Trash2 } from "lucide-react"
 import { useUser } from "@/hooks/useUser"
 import { apiFetch } from "@/lib/api"
 import { Button } from "@/components/ui/button"
@@ -75,6 +75,11 @@ export default function Collection() {
   const [justAdded, setJustAdded] = useState<string | null>(null)
   const [importing, setImporting] = useState(false)
   const [loadingDemo, setLoadingDemo] = useState(false)
+
+  const [removeError, setRemoveError] = useState<string | null>(null)
+  const [confirmingReset, setConfirmingReset] = useState(false)
+  const [resetting, setResetting] = useState(false)
+  const [resetError, setResetError] = useState<string | null>(null)
 
   const hasMore = tracks.length < total
 
@@ -173,6 +178,37 @@ export default function Collection() {
     } catch (err) {
       console.error(err)
       setAdding(null)
+    }
+  }
+
+  async function handleRemoveTrack(track: CollectionTrack) {
+    if (!userId) return
+    setRemoveError(null)
+    setTracks((prev) => prev.filter((t) => t.track_id !== track.track_id))
+    setTotal((prev) => Math.max(0, prev - 1))
+    try {
+      await apiFetch(`/collection/tracks/${track.track_id}`, userId, { method: "DELETE" })
+    } catch (err) {
+      console.error(err)
+      setRemoveError(`Couldn't remove "${track.title}". Try again.`)
+      await fetchPage(0, true) // resync with server rather than guess where to reinsert it
+    }
+  }
+
+  async function handleResetCollection() {
+    if (!userId) return
+    setResetError(null)
+    setResetting(true)
+    try {
+      await apiFetch("/collection/tracks", userId, { method: "DELETE" })
+      setTracks([])
+      setTotal(0)
+      setConfirmingReset(false)
+    } catch (err) {
+      console.error(err)
+      setResetError("Couldn't reset your collection. Try again.")
+    } finally {
+      setResetting(false)
     }
   }
 
@@ -280,18 +316,52 @@ export default function Collection() {
           <h2 className="text-lg font-semibold">
             Your tracks{total > 0 ? ` (${total})` : ""}
           </h2>
-          {total > 0 && (
-            <Button
-              size="sm"
-              variant="outline"
-              loading={loadingDemo}
-              onClick={handleLoadDemo}
-              disabled={!userId}
-            >
-              Load sample collection
-            </Button>
+          {total > 0 && !confirmingReset && (
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                loading={loadingDemo}
+                onClick={handleLoadDemo}
+                disabled={!userId}
+              >
+                Load sample collection
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-muted-foreground hover:text-destructive"
+                onClick={() => setConfirmingReset(true)}
+                disabled={!userId}
+              >
+                <Trash2 className="size-3.5" />
+                Reset
+              </Button>
+            </div>
+          )}
+          {total > 0 && confirmingReset && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">Remove all tracks?</span>
+              <Button size="sm" variant="destructive" loading={resetting} onClick={handleResetCollection}>
+                Confirm
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setConfirmingReset(false)}
+                disabled={resetting}
+              >
+                Cancel
+              </Button>
+            </div>
           )}
         </div>
+
+        {(removeError || resetError) && (
+          <div className="rounded-md border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {removeError || resetError}
+          </div>
+        )}
 
         {total === 0 && loadingMore ? (
           <Card className="p-2">
@@ -355,6 +425,17 @@ export default function Collection() {
                             album={track.album}
                             year={track.release_year}
                             sourceLabel={SOURCE_LABELS[track.source]}
+                            trailing={
+                              <Button
+                                size="icon-sm"
+                                variant="ghost"
+                                className="text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-destructive focus-visible:opacity-100"
+                                onClick={() => handleRemoveTrack(track)}
+                                aria-label={`Remove ${track.title} from your collection`}
+                              >
+                                <Trash2 className="size-3.5" />
+                              </Button>
+                            }
                           />
                         )}
                       </div>
