@@ -250,69 +250,83 @@ export default function Collection() {
 
   const showSearchPanel = searching || searchResults !== null
 
+  const searchContainerRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!showSearchPanel) return
+    function handleClickOutside(e: MouseEvent) {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
+        setSearchResults(null)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [showSearchPanel])
+
   return (
     <div className="flex h-full min-h-0 flex-col gap-6">
       <div className="shrink-0 space-y-6">
         <h2 className="text-lg font-semibold">Add tracks</h2>
 
-        <form onSubmit={handleSearch} className="flex gap-2">
-          <Input
-            placeholder="Search Spotify..."
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-          <Button type="submit" loading={searching} disabled={!userId}>
-            Search
-          </Button>
-        </form>
+        <div ref={searchContainerRef} className="relative">
+          <form onSubmit={handleSearch} className="flex gap-2">
+            <Input
+              placeholder="Search Spotify..."
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+            <Button type="submit" loading={searching} disabled={!userId}>
+              Search
+            </Button>
+          </form>
 
-        {showSearchPanel && (
-          <Card className="max-h-80 overflow-y-auto p-2">
-            {searching ? (
-              <div className="space-y-1">
-                {Array.from({ length: 3 }).map((_, i) => (
-                  <SkeletonRow key={i} />
-                ))}
-              </div>
-            ) : searchResults && searchResults.length === 0 ? (
-              <EmptyState
-                icon={SearchX}
-                title={`No matches for "${query}"`}
-                description="Try a different search term."
-                className="border-0 ring-0"
-              />
-            ) : (
-              <div className="space-y-1">
-                {searchResults?.map((track) => (
-                  <TrackRow
-                    key={track.spotify_id}
-                    albumArtUrl={track.album_art_url}
-                    title={track.title}
-                    artist={track.artist}
-                    album={track.album}
-                    year={track.release_year}
-                    trailing={
-                      justAdded === track.spotify_id ? (
-                        <Button size="sm" variant="outline" disabled className="text-primary">
-                          <Check className="size-3.5" />
-                          Added
-                        </Button>
-                      ) : (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleAddTrack(track)}
-                        >
-                          Add
-                        </Button>
-                      )
-                    }
-                  />
-                ))}
-              </div>
-            )}
-          </Card>
-        )}
+          {showSearchPanel && (
+            <Card className="absolute inset-x-0 top-full z-20 mt-2 max-h-80 overflow-y-auto p-2 shadow-lg">
+              {searching ? (
+                <div className="space-y-1">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <SkeletonRow key={i} />
+                  ))}
+                </div>
+              ) : searchResults && searchResults.length === 0 ? (
+                <EmptyState
+                  icon={SearchX}
+                  title={`No matches for "${query}"`}
+                  description="Try a different search term."
+                  className="border-0 ring-0"
+                />
+              ) : (
+                <div className="space-y-1">
+                  {searchResults?.map((track) => (
+                    <TrackRow
+                      key={track.spotify_id}
+                      albumArtUrl={track.album_art_url}
+                      title={track.title}
+                      artist={track.artist}
+                      album={track.album}
+                      year={track.release_year}
+                      trailing={
+                        justAdded === track.spotify_id ? (
+                          <Button size="sm" variant="outline" disabled className="text-primary">
+                            <Check className="size-3.5" />
+                            Added
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleAddTrack(track)}
+                          >
+                            Add
+                          </Button>
+                        )
+                      }
+                    />
+                  ))}
+                </div>
+              )}
+            </Card>
+          )}
+        </div>
 
         <form onSubmit={handleImport} className="flex gap-2">
           <Input
