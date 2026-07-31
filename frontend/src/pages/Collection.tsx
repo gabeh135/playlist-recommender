@@ -71,8 +71,8 @@ export default function Collection() {
   const [loadError, setLoadError] = useState(false)
 
   const [searching, setSearching] = useState(false)
-  const [adding, setAdding] = useState<string | null>(null)
   const [justAdded, setJustAdded] = useState<string | null>(null)
+  const [addError, setAddError] = useState<string | null>(null)
   const [importing, setImporting] = useState(false)
   const [loadingDemo, setLoadingDemo] = useState(false)
 
@@ -105,12 +105,10 @@ export default function Collection() {
     [userId]
   )
 
-  // Initial load
   useEffect(() => {
     fetchPage(0, true)
   }, [fetchPage])
 
-  // Virtualized list
   const parentRef = useRef<HTMLDivElement>(null)
   const rowVirtualizer = useVirtualizer({
     count: hasMore ? tracks.length + 1 : tracks.length,
@@ -161,23 +159,43 @@ export default function Collection() {
 
   async function handleAddTrack(track: TrackCandidate) {
     if (!userId) return
-    setAdding(track.spotify_id)
+    setAddError(null)
+
+    const tempId = `temp-${track.spotify_id}`
+    setTracks((prev) => [
+      {
+        track_id: tempId,
+        spotify_id: track.spotify_id,
+        title: track.title,
+        artist: track.artist,
+        album: track.album,
+        release_year: track.release_year,
+        album_art_url: track.album_art_url,
+        added_at: new Date().toISOString(),
+        source: "SEARCH",
+      },
+      ...prev,
+    ])
+    setTotal((prev) => prev + 1)
+    setJustAdded(track.spotify_id)
+    setTimeout(() => {
+      setJustAdded((current) => (current === track.spotify_id ? null : current))
+      setSearchResults((prev) => prev?.filter((t) => t.spotify_id !== track.spotify_id) ?? prev)
+    }, 1200)
+
     try {
-      await apiFetch("/collection/tracks", userId, {
+      const data = await apiFetch<{ track_id: string }>("/collection/tracks", userId, {
         method: "POST",
         body: JSON.stringify({ spotify_id: track.spotify_id }),
       })
-      setAdding(null)
-      setJustAdded(track.spotify_id)
-      // Reset to page 0 so the new track appears at the top (sorted by added_at desc)
-      await fetchPage(0, true)
-      setTimeout(() => {
-        setJustAdded((current) => (current === track.spotify_id ? null : current))
-        setSearchResults((prev) => prev?.filter((t) => t.spotify_id !== track.spotify_id) ?? prev)
-      }, 1200)
+      setTracks((prev) =>
+        prev.map((t) => (t.track_id === tempId ? { ...t, track_id: data.track_id } : t))
+      )
     } catch (err) {
       console.error(err)
-      setAdding(null)
+      setTracks((prev) => prev.filter((t) => t.track_id !== tempId))
+      setTotal((prev) => Math.max(0, prev - 1))
+      setAddError(`Couldn't add "${track.title}". Try again.`)
     }
   }
 
@@ -283,7 +301,6 @@ export default function Collection() {
                         <Button
                           size="sm"
                           variant="outline"
-                          loading={adding === track.spotify_id}
                           onClick={() => handleAddTrack(track)}
                         >
                           Add
@@ -312,7 +329,7 @@ export default function Collection() {
       <Separator />
 
       <div className="flex min-h-0 flex-1 flex-col gap-3">
-        <div className="flex items-center justify-between">
+        <div className="flex shrink-0 items-center justify-between">
           <h2 className="text-lg font-semibold">
             Your tracks{total > 0 ? ` (${total})` : ""}
           </h2>
@@ -357,14 +374,14 @@ export default function Collection() {
           )}
         </div>
 
-        {(removeError || resetError) && (
-          <div className="rounded-md border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            {removeError || resetError}
+        {(addError || removeError || resetError) && (
+          <div className="shrink-0 rounded-md border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {addError || removeError || resetError}
           </div>
         )}
 
         {total === 0 && loadingMore ? (
-          <Card className="p-2">
+          <Card className="shrink-0 p-2">
             <div className="space-y-1">
               {Array.from({ length: 6 }).map((_, i) => (
                 <SkeletonRow key={i} />
@@ -373,6 +390,7 @@ export default function Collection() {
           </Card>
         ) : loadError ? (
           <EmptyState
+            className="shrink-0"
             icon={ServerCrash}
             title="Couldn't load your collection"
             description="Something went wrong reaching the server."
@@ -384,6 +402,7 @@ export default function Collection() {
           />
         ) : total === 0 ? (
           <EmptyState
+            className="shrink-0"
             icon={Library}
             title="No tracks yet"
             description="Search above to add tracks, or load a sample collection to explore the app."
