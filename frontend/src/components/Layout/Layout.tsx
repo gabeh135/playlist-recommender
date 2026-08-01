@@ -50,7 +50,7 @@ export default function Layout() {
         </div>
       </nav>
 
-      <main className="mx-auto min-h-0 w-full max-w-4xl flex-1 overflow-y-auto px-6 py-8">
+      <main className="scrollbar-thin mx-auto min-h-0 w-full max-w-4xl flex-1 overflow-y-auto px-6 py-8">
         <Outlet />
       </main>
     </div>

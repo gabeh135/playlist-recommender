@@ -11,6 +11,7 @@ import { Separator } from "@/components/ui/separator"
 import { Spinner } from "@/components/ui/spinner"
 import TrackRow from "@/components/TrackRow"
 import EmptyState from "@/components/EmptyState"
+import ScrollBox from "@/components/ScrollBox"
 
 interface TrackCandidate {
   spotify_id: string
@@ -209,7 +210,7 @@ export default function Collection() {
     } catch (err) {
       console.error(err)
       setRemoveError(`Couldn't remove "${track.title}". Try again.`)
-      await fetchPage(0, true) // resync with server rather than guess where to reinsert it
+      await fetchPage(0, true) // resync with server
     }
   }
 
@@ -280,50 +281,52 @@ export default function Collection() {
           </form>
 
           {showSearchPanel && (
-            <Card className="absolute inset-x-0 top-full z-20 mt-2 max-h-80 overflow-y-auto p-2 shadow-lg">
-              {searching ? (
-                <div className="space-y-1">
-                  {Array.from({ length: 3 }).map((_, i) => (
-                    <SkeletonRow key={i} />
-                  ))}
-                </div>
-              ) : searchResults && searchResults.length === 0 ? (
-                <EmptyState
-                  icon={SearchX}
-                  title={`No matches for "${query}"`}
-                  description="Try a different search term."
-                  className="border-0 ring-0"
-                />
-              ) : (
-                <div className="space-y-1">
-                  {searchResults?.map((track) => (
-                    <TrackRow
-                      key={track.spotify_id}
-                      albumArtUrl={track.album_art_url}
-                      title={track.title}
-                      artist={track.artist}
-                      album={track.album}
-                      year={track.release_year}
-                      trailing={
-                        justAdded === track.spotify_id ? (
-                          <Button size="sm" variant="outline" disabled className="text-primary">
-                            <Check className="size-3.5" />
-                            Added
-                          </Button>
-                        ) : (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleAddTrack(track)}
-                          >
-                            Add
-                          </Button>
-                        )
-                      }
-                    />
-                  ))}
-                </div>
-              )}
+            <Card className="absolute inset-x-0 top-full z-20 mt-2 overflow-hidden p-0 shadow-lg">
+              <ScrollBox className="max-h-80">
+                {searching ? (
+                  <div className="space-y-1">
+                    {Array.from({ length: 3 }).map((_, i) => (
+                      <SkeletonRow key={i} />
+                    ))}
+                  </div>
+                ) : searchResults && searchResults.length === 0 ? (
+                  <EmptyState
+                    icon={SearchX}
+                    title={`No matches for "${query}"`}
+                    description="Try a different search term."
+                    className="border-0 ring-0"
+                  />
+                ) : (
+                  <div className="space-y-1">
+                    {searchResults?.map((track) => (
+                      <TrackRow
+                        key={track.spotify_id}
+                        albumArtUrl={track.album_art_url}
+                        title={track.title}
+                        artist={track.artist}
+                        album={track.album}
+                        year={track.release_year}
+                        trailing={
+                          justAdded === track.spotify_id ? (
+                            <Button size="sm" variant="outline" disabled className="text-primary">
+                              <Check className="size-3.5" />
+                              Added
+                            </Button>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleAddTrack(track)}
+                            >
+                              Add
+                            </Button>
+                          )
+                        }
+                      />
+                    ))}
+                  </div>
+                )}
+              </ScrollBox>
             </Card>
           )}
         </div>
@@ -428,57 +431,50 @@ export default function Collection() {
           />
         ) : (
           <Card className="min-h-0 flex-1 overflow-hidden p-0">
-            <div className="relative h-full">
-              <div ref={parentRef} className="h-full overflow-y-auto p-2">
-                <div
-                  style={{ height: rowVirtualizer.getTotalSize() }}
-                  className="relative"
-                >
-                  {virtualItems.map((virtualRow) => {
-                    const isLoader = virtualRow.index >= tracks.length
-                    const track = tracks[virtualRow.index]
+            <ScrollBox ref={parentRef} className="h-full">
+              <div style={{ height: rowVirtualizer.getTotalSize() }} className="relative">
+                {virtualItems.map((virtualRow) => {
+                  const isLoader = virtualRow.index >= tracks.length
+                  const track = tracks[virtualRow.index]
 
-                    return (
-                      <div
-                        key={virtualRow.key}
-                        data-index={virtualRow.index}
-                        ref={rowVirtualizer.measureElement}
-                        style={{ transform: `translateY(${virtualRow.start}px)` }}
-                        className="absolute top-0 left-0 right-0"
-                      >
-                        {isLoader ? (
-                          <div className="flex items-center justify-center py-4">
-                            <Spinner className="size-4 text-muted-foreground" />
-                          </div>
-                        ) : (
-                          <TrackRow
-                            albumArtUrl={track.album_art_url}
-                            title={track.title}
-                            artist={track.artist}
-                            album={track.album}
-                            year={track.release_year}
-                            sourceLabel={SOURCE_LABELS[track.source]}
-                            trailing={
-                              <Button
-                                size="icon-sm"
-                                variant="ghost"
-                                className="text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-destructive focus-visible:opacity-100"
-                                onClick={() => handleRemoveTrack(track)}
-                                aria-label={`Remove ${track.title} from your collection`}
-                              >
-                                <Trash2 className="size-3.5" />
-                              </Button>
-                            }
-                          />
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
+                  return (
+                    <div
+                      key={virtualRow.key}
+                      data-index={virtualRow.index}
+                      ref={rowVirtualizer.measureElement}
+                      style={{ transform: `translateY(${virtualRow.start}px)` }}
+                      className="absolute top-0 left-0 right-0"
+                    >
+                      {isLoader ? (
+                        <div className="flex items-center justify-center py-4">
+                          <Spinner className="size-4 text-muted-foreground" />
+                        </div>
+                      ) : (
+                        <TrackRow
+                          albumArtUrl={track.album_art_url}
+                          title={track.title}
+                          artist={track.artist}
+                          album={track.album}
+                          year={track.release_year}
+                          sourceLabel={SOURCE_LABELS[track.source]}
+                          trailing={
+                            <Button
+                              size="icon-sm"
+                              variant="ghost"
+                              className="text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-destructive focus-visible:opacity-100"
+                              onClick={() => handleRemoveTrack(track)}
+                              aria-label={`Remove ${track.title} from your collection`}
+                            >
+                              <Trash2 className="size-3.5" />
+                            </Button>
+                          }
+                        />
+                      )}
+                    </div>
+                  )
+                })}
               </div>
-              <div className="pointer-events-none absolute inset-x-0 top-0 h-4 bg-gradient-to-b from-card to-transparent" />
-              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-4 bg-gradient-to-t from-card to-transparent" />
-            </div>
+            </ScrollBox>
           </Card>
         )}
       </div>

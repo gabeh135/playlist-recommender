@@ -9,6 +9,8 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import TrackRow from "@/components/TrackRow"
 import EmptyState from "@/components/EmptyState"
+import ScrollBox from "@/components/ScrollBox"
+import { cn } from "@/lib/utils"
 
 interface ClusterTrack {
   position: number
@@ -50,6 +52,11 @@ export default function SortLibrary() {
   const [loadingMsg, setLoadingMsg] = useState(LOADING_MESSAGES[0])
   const [result, setResult] = useState<ClusterResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [selectedIndex, setSelectedIndex] = useState(0)
+
+  const selectedPlaylist = result
+    ? (result.playlists[selectedIndex] ?? result.playlists[0])
+    : null
 
   const fetchCollectionSize = () => {
     if (!userId) return
@@ -90,6 +97,7 @@ export default function SortLibrary() {
         }),
       })
       setResult(data)
+      setSelectedIndex(0)
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Something went wrong"
       setError(msg.includes("400") ? `Not enough tracks to sort (need at least 10).` : msg)
@@ -233,22 +241,42 @@ export default function SortLibrary() {
             </Card>
           ))}
         </div>
-      ) : result ? (
-        <div className="space-y-6">
+      ) : result && selectedPlaylist ? (
+        <div className="space-y-4">
           <p className="text-sm text-muted-foreground">
             {result.n_clusters} playlists · {result.tracks_placed} tracks placed
             {result.outliers_excluded > 0 && ` · ${result.outliers_excluded} outliers excluded`}
           </p>
-          {result.playlists.map((playlist) => (
-            <Card key={playlist.id} className="transition-shadow hover:shadow-md">
-              <CardHeader>
-                <CardTitle>{playlist.name}</CardTitle>
+          <div className="flex flex-col gap-4 sm:flex-row">
+            <div className="flex shrink-0 flex-col gap-1 sm:w-48">
+              {result.playlists.map((playlist, i) => (
+                <button
+                  key={playlist.id}
+                  onClick={() => setSelectedIndex(i)}
+                  className={cn(
+                    "flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors",
+                    i === selectedIndex
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  )}
+                >
+                  <span className="truncate">{playlist.name}</span>
+                  <Badge variant="secondary" className="shrink-0">
+                    {playlist.tracks.length}
+                  </Badge>
+                </button>
+              ))}
+            </div>
+
+            <Card className="min-w-0 flex-1 overflow-hidden p-0">
+              <CardHeader className="shrink-0 border-b border-border/50 px-4 py-3">
+                <CardTitle>{selectedPlaylist.name}</CardTitle>
                 <CardAction>
-                  <Badge variant="secondary">{playlist.tracks.length} tracks</Badge>
+                  <Badge variant="secondary">{selectedPlaylist.tracks.length} tracks</Badge>
                 </CardAction>
               </CardHeader>
-              <CardContent className="space-y-1">
-                {playlist.tracks.map((track) => (
+              <ScrollBox className="max-h-[28rem]" contentClassName="space-y-1 p-2">
+                {selectedPlaylist.tracks.map((track) => (
                   <TrackRow
                     key={track.track_id}
                     position={track.position + 1}
@@ -257,9 +285,9 @@ export default function SortLibrary() {
                     artist={track.artist}
                   />
                 ))}
-              </CardContent>
+              </ScrollBox>
             </Card>
-          ))}
+          </div>
         </div>
       ) : (
         <EmptyState

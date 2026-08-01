@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import TrackRow from "@/components/TrackRow"
 import EmptyState from "@/components/EmptyState"
+import ScrollBox from "@/components/ScrollBox"
 
 interface PlaylistTrack {
   position: number
@@ -109,11 +110,11 @@ export default function Generate() {
           </CardContent>
         </Card>
       ) : result ? (
-        <Card>
-          <CardHeader>
+        <Card className="overflow-hidden p-0">
+          <CardHeader className="shrink-0 border-b border-border/50 px-4 py-3">
             <CardTitle>{result.name}</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-1">
+          <ScrollBox className="max-h-[28rem]" contentClassName="space-y-1 p-2">
             {result.tracks.map((track) => (
               <TrackRow
                 key={track.spotify_id}
@@ -124,7 +125,7 @@ export default function Generate() {
                 album={track.album}
               />
             ))}
-          </CardContent>
+          </ScrollBox>
         </Card>
       ) : (
         <EmptyState
